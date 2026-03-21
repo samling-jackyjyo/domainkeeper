@@ -59,6 +59,21 @@ const ACCESS_PASSWORD_DEFAULT = "";
 let ACCESS_PASSWORD = ACCESS_PASSWORD_DEFAULT;
 const DONATE_URL_DEFAULT = "";
 let DONATE_URL = DONATE_URL_DEFAULT;
+const TELEMETRY_OPT_IN_DEFAULT = false;
+let TELEMETRY_OPT_IN = TELEMETRY_OPT_IN_DEFAULT;
+const TELEMETRY_CENTER_ENABLED_DEFAULT = false;
+let TELEMETRY_CENTER_ENABLED = TELEMETRY_CENTER_ENABLED_DEFAULT;
+const TELEMETRY_SERVER_URL_DEFAULT = "";
+let TELEMETRY_SERVER_URL = TELEMETRY_SERVER_URL_DEFAULT;
+const TELEMETRY_TOKEN_DEFAULT = "";
+let TELEMETRY_TOKEN = TELEMETRY_TOKEN_DEFAULT;
+const TELEMETRY_DEPLOYMENT_ID_DEFAULT = "";
+let TELEMETRY_DEPLOYMENT_ID = TELEMETRY_DEPLOYMENT_ID_DEFAULT;
+const TELEMETRY_DEPLOYMENT_LABEL_DEFAULT = "";
+let TELEMETRY_DEPLOYMENT_LABEL = TELEMETRY_DEPLOYMENT_LABEL_DEFAULT;
+const TELEMETRY_INGEST_PATH = "/api/telemetry/ingest";
+const TELEMETRY_KEY_PREFIX = "telemetry_";
+const TELEMETRY_RECENT_IP_LIMIT = 12;
 
 const ADMIN_PASSWORD_DEFAULT = "";
 let ADMIN_PASSWORD = ADMIN_PASSWORD_DEFAULT;
@@ -92,9 +107,9 @@ const footerHTML = `
 `;
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     applyRuntimeBindings(env);
-    return handleRequest(request);
+    return handleRequest(request, ctx);
   }
 };
 
@@ -102,6 +117,12 @@ function applyRuntimeBindings(env) {
   CF_API_KEY = env.CF_API_KEY || CF_API_KEY_DEFAULT;
   ACCESS_PASSWORD = env.ACCESS_PASSWORD || ACCESS_PASSWORD_DEFAULT;
   DONATE_URL = String(env.DONATE_URL || DONATE_URL_DEFAULT).trim();
+  TELEMETRY_OPT_IN = parseBooleanEnv(env.TELEMETRY_OPT_IN, TELEMETRY_OPT_IN_DEFAULT);
+  TELEMETRY_CENTER_ENABLED = parseBooleanEnv(env.TELEMETRY_CENTER_ENABLED, TELEMETRY_CENTER_ENABLED_DEFAULT);
+  TELEMETRY_SERVER_URL = normalizeConfiguredUrl(env.TELEMETRY_SERVER_URL) || TELEMETRY_SERVER_URL_DEFAULT;
+  TELEMETRY_TOKEN = String(env.TELEMETRY_TOKEN || TELEMETRY_TOKEN_DEFAULT).trim();
+  TELEMETRY_DEPLOYMENT_ID = String(env.TELEMETRY_DEPLOYMENT_ID || TELEMETRY_DEPLOYMENT_ID_DEFAULT).trim();
+  TELEMETRY_DEPLOYMENT_LABEL = String(env.TELEMETRY_DEPLOYMENT_LABEL || TELEMETRY_DEPLOYMENT_LABEL_DEFAULT).trim();
   ADMIN_PASSWORD = env.ADMIN_PASSWORD || ADMIN_PASSWORD_DEFAULT;
   TENCENTCLOUD_SECRET_ID = String(env.TENCENTCLOUD_SECRET_ID || TENCENTCLOUD_SECRET_ID_DEFAULT).trim();
   TENCENTCLOUD_SECRET_KEY = String(env.TENCENTCLOUD_SECRET_KEY || TENCENTCLOUD_SECRET_KEY_DEFAULT).trim();
@@ -154,9 +175,208 @@ function parseListEnv(value, defaultValues) {
   );
 }
 
-async function handleRequest(request) {
+function isTelemetryTrackablePath(pathname) {
+  return pathname === "/" || pathname === "/login" || pathname === "/admin" || pathname === "/admin-login";
+}
+
+function getRequestVisitorIp(request) {
+  const directIp = String(request.headers.get("CF-Connecting-IP") || "").trim();
+  if (directIp) {
+    return directIp;
+  }
+
+  const forwardedFor = String(request.headers.get("X-Forwarded-For") || "").trim();
+  return forwardedFor ? forwardedFor.split(",")[0].trim() : "";
+}
+
+function sanitizeTelemetryValue(value, maxLength = 200) {
+  return String(value || "").trim().slice(0, maxLength);
+}
+
+function buildTelemetryRecordKey(deploymentId) {
+  return `${TELEMETRY_KEY_PREFIX}${encodeURIComponent(String(deploymentId || "").trim())}`;
+}
+
+function getEffectiveTelemetryDeploymentId(url) {
+  return sanitizeTelemetryValue(TELEMETRY_DEPLOYMENT_ID || url.host, 120);
+}
+
+function getEffectiveTelemetryDeploymentLabel(url) {
+  return sanitizeTelemetryValue(TELEMETRY_DEPLOYMENT_LABEL || TELEMETRY_DEPLOYMENT_ID || url.host, 160);
+}
+
+async function sendTelemetryHeartbeat(request) {
+  if (!TELEMETRY_OPT_IN || !TELEMETRY_SERVER_URL || !TELEMETRY_TOKEN) {
+    return;
+  }
+
+  const url = new URL(request.url);
+  const deploymentId = getEffectiveTelemetryDeploymentId(url);
+  if (!deploymentId) {
+    return;
+  }
+
+  const endpoint = new URL(TELEMETRY_INGEST_PATH, TELEMETRY_SERVER_URL);
+  const payload = {
+    deploymentId,
+    deploymentLabel: getEffectiveTelemetryDeploymentLabel(url),
+    host: sanitizeTelemetryValue(url.host, 160),
+    origin: sanitizeTelemetryValue(url.origin, 240),
+    path: sanitizeTelemetryValue(url.pathname, 120),
+    visitorIp: sanitizeTelemetryValue(getRequestVisitorIp(request), 80),
+    reportedAt: new Date().toISOString(),
+    version: VERSION
+  };
+
+  try {
+    await fetch(endpoint.toString(), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${TELEMETRY_TOKEN}`
+      },
+      body: JSON.stringify(payload)
+    });
+  } catch (error) {
+    console.warn("Telemetry heartbeat failed:", error);
+  }
+}
+
+async function maybeTrackTelemetry(request, ctx) {
+  if (request.method !== "GET") {
+    return;
+  }
+
+  const pathname = new URL(request.url).pathname;
+  if (!isTelemetryTrackablePath(pathname)) {
+    return;
+  }
+
+  if (ctx && typeof ctx.waitUntil === "function") {
+    ctx.waitUntil(sendTelemetryHeartbeat(request));
+    return;
+  }
+
+  await sendTelemetryHeartbeat(request);
+}
+
+async function handleTelemetryIngest(request) {
+  if (!TELEMETRY_CENTER_ENABLED) {
+    return new Response("Not Found", { status: 404 });
+  }
+
+  if (request.method !== "POST") {
+    return new Response("Method Not Allowed", { status: 405 });
+  }
+
+  if (!TELEMETRY_TOKEN) {
+    return new Response(JSON.stringify({ success: false, error: "Telemetry center token is not configured" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+
+  const authorization = String(request.headers.get("Authorization") || "").trim();
+  if (authorization !== `Bearer ${TELEMETRY_TOKEN}`) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  try {
+    const payload = await request.json();
+    const deploymentId = sanitizeTelemetryValue(payload.deploymentId, 120);
+    if (!deploymentId) {
+      return new Response(JSON.stringify({ success: false, error: "Missing deploymentId" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+
+    const key = buildTelemetryRecordKey(deploymentId);
+    const existing = await KV_NAMESPACE.get(key, "json");
+    const now = new Date().toISOString();
+    const visitorIp = sanitizeTelemetryValue(payload.visitorIp, 80);
+    const previousIps = Array.isArray(existing?.recentIps) ? existing.recentIps : [];
+    const recentIps = visitorIp
+      ? [visitorIp].concat(previousIps.filter((item) => item !== visitorIp)).slice(0, TELEMETRY_RECENT_IP_LIMIT)
+      : previousIps.slice(0, TELEMETRY_RECENT_IP_LIMIT);
+
+    const record = {
+      deploymentId,
+      deploymentLabel: sanitizeTelemetryValue(payload.deploymentLabel, 160) || deploymentId,
+      host: sanitizeTelemetryValue(payload.host, 160),
+      origin: sanitizeTelemetryValue(payload.origin, 240),
+      lastPath: sanitizeTelemetryValue(payload.path, 120),
+      version: sanitizeTelemetryValue(payload.version, 32),
+      firstSeenAt: existing?.firstSeenAt || now,
+      lastSeenAt: now,
+      lastSeenIp: visitorIp || existing?.lastSeenIp || "",
+      recentIps
+    };
+
+    await KV_NAMESPACE.put(key, JSON.stringify(record));
+
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { "Content-Type": "application/json" }
+    });
+  } catch (error) {
+    console.error("Telemetry ingest failed:", error);
+    return new Response(JSON.stringify({ success: false, error: error.message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+}
+
+async function fetchTelemetryStats() {
+  if (!TELEMETRY_CENTER_ENABLED) {
+    return null;
+  }
+
+  const list = await KV_NAMESPACE.list({ prefix: TELEMETRY_KEY_PREFIX });
+  const records = [];
+  for (const item of list.keys) {
+    const record = await KV_NAMESPACE.get(item.name, "json");
+    if (record && record.deploymentId) {
+      records.push(record);
+    }
+  }
+
+  records.sort((a, b) => String(b.lastSeenAt || "").localeCompare(String(a.lastSeenAt || "")));
+
+  return {
+    totalDeployments: records.length,
+    totalKnownIps: new Set(
+      records.flatMap((record) => Array.isArray(record.recentIps) ? record.recentIps : []).filter(Boolean)
+    ).size,
+    lastSeenAt: records[0]?.lastSeenAt || "",
+    records
+  };
+}
+
+function formatTelemetryDateTime(value) {
+  const normalized = String(value || "").trim();
+  if (!normalized) {
+    return "Unknown";
+  }
+
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) {
+    return normalized;
+  }
+
+  const pad = (number) => String(number).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+async function handleRequest(request, ctx) {
    const url = new URL(request.url);
   const path = url.pathname;
+
+  if (path === TELEMETRY_INGEST_PATH) {
+    return handleTelemetryIngest(request);
+  }
+
+  await maybeTrackTelemetry(request, ctx);
 
   if (path === "/api/manual-query") {
     return handleManualQuery(request);
@@ -253,7 +473,8 @@ async function handleAdmin(request) {
 
   const domains = await fetchCloudflareDomainsInfo();
   const domainsWithInfo = await fetchDomainInfo(domains, { allowWhoisRefresh: false });
-  return new Response(generateHTML(domainsWithInfo, true), {
+  const telemetryStats = await fetchTelemetryStats();
+  return new Response(generateHTML(domainsWithInfo, true, telemetryStats), {
     headers: { 'Content-Type': 'text/html' },
   });
 }
@@ -2115,6 +2336,69 @@ function renderSupportBanner() {
         ${donateButton}
       </div>
     </div>
+  `;
+}
+
+function renderTelemetryCenterPanel(telemetryStats) {
+  if (!telemetryStats) {
+    return '';
+  }
+
+  const lastSeenText = telemetryStats.lastSeenAt
+    ? formatTelemetryDateTime(telemetryStats.lastSeenAt)
+    : 'Unknown';
+
+  const rows = telemetryStats.records.length
+    ? telemetryStats.records.map((record) => {
+        const recentIps = Array.isArray(record.recentIps) && record.recentIps.length
+          ? record.recentIps.map((item) => `<span class="telemetry-ip-chip">${escapeHtml(item)}</span>`).join('')
+          : '<span class="telemetry-muted">Unknown</span>';
+
+        return `
+          <tr>
+            <td>${escapeHtml(record.deploymentLabel || record.deploymentId || 'Unknown')}</td>
+            <td>${escapeHtml(record.host || record.origin || 'Unknown')}</td>
+            <td>${recentIps}</td>
+            <td>${escapeHtml(formatTelemetryDateTime(record.lastSeenAt))}</td>
+          </tr>
+        `;
+      }).join('')
+    : '<tr><td colspan="4" class="empty-cell">鏆傛棤鑷効涓婃姤鐨勯儴缃蹭俊鎭?/td></tr>';
+
+  return `
+    <section id="telemetryCenterPanel" class="panel telemetry-panel">
+      <div class="panel-head">
+        <h2>缁熻涓績</h2>
+        <p>鍙粺璁¤嚜鎰垮紑鍚笂鎶ョ殑閮ㄧ讲鏁般€佽闂?IP 鍜屾渶杩戝湪绾挎椂闂淬€?/p>
+      </div>
+      <div class="telemetry-summary">
+        <div class="telemetry-stat-card">
+          <span class="telemetry-stat-label">閮ㄧ讲鏁?</span>
+          <strong class="telemetry-stat-value">${telemetryStats.totalDeployments}</strong>
+        </div>
+        <div class="telemetry-stat-card">
+          <span class="telemetry-stat-label">宸茬煡 IP</span>
+          <strong class="telemetry-stat-value">${telemetryStats.totalKnownIps}</strong>
+        </div>
+        <div class="telemetry-stat-card">
+          <span class="telemetry-stat-label">鏈€杩戝湪绾?</span>
+          <strong class="telemetry-stat-value">${escapeHtml(lastSeenText)}</strong>
+        </div>
+      </div>
+      <div class="table-wrapper telemetry-table-wrap">
+        <table class="domain-table telemetry-table">
+          <thead>
+            <tr>
+              <th>閮ㄧ讲鏍囪瘑</th>
+              <th>Host</th>
+              <th>璁块棶 IP</th>
+              <th>鏈€杩戝湪绾?</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </section>
   `;
 }
 
@@ -4620,7 +4904,7 @@ function generateHTMLCards(domains, isAdmin) {
   `;
 }
 
-function generateHTML(domains, isAdmin) {
+function generateHTML(domains, isAdmin, telemetryStats = null) {
   const categorizedDomains = categorizeDomains(domains);
   const topLevelColumns = [
     { key: 'status', label: '状态', className: 'status-column', sortType: 'number' },
@@ -5042,6 +5326,7 @@ function generateHTML(domains, isAdmin) {
       <button id="saveAllDomainsBtn" class="primary-btn">保存全部修改</button>
       <button id="updateAllWhoisBtn" class="primary-btn">全局更新WHOIS</button>
       <button id="syncCloudflareBtn" class="primary-btn">同步 Cloudflare 域名</button>
+      ${telemetryStats ? '<a id="telemetryCenterBtn" class="primary-btn toolbar-link-btn" href="#telemetryCenterPanel">缁熻涓績</a>' : ''}
       <span id="saveStatus" class="toolbar-status"></span>
       <span id="whoisStatus" class="toolbar-status"></span>
       <span id="syncStatus" class="toolbar-status"></span>
@@ -5249,6 +5534,13 @@ function generateHTML(domains, isAdmin) {
       line-height: 1.35;
       border-radius: 14px;
       box-shadow: 0 12px 28px rgba(37, 99, 235, 0.18);
+    }
+    .toolbar-link-btn {
+      text-decoration: none;
+      text-align: center;
+      justify-content: center;
+      display: inline-flex;
+      align-items: center;
     }
     .toolbar-status {
       display: block;
@@ -5788,6 +6080,61 @@ function generateHTML(domains, isAdmin) {
     .whois-result-panel {
       margin-top: 18px;
     }
+    .telemetry-panel {
+      margin-bottom: 18px;
+    }
+    .telemetry-summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      padding: 0 16px 16px;
+    }
+    .telemetry-stat-card {
+      padding: 14px 16px;
+      border-radius: 16px;
+      border: 1px solid #dbe3ef;
+      background: #f8fafc;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.7);
+    }
+    .telemetry-stat-label {
+      display: block;
+      margin-bottom: 6px;
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .telemetry-stat-value {
+      display: block;
+      color: #0f172a;
+      font-size: 18px;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+    .telemetry-table-wrap {
+      padding-bottom: 6px;
+    }
+    .telemetry-table {
+      min-width: 760px;
+    }
+    .telemetry-table td {
+      white-space: normal;
+    }
+    .telemetry-ip-chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 8px;
+      margin: 0 6px 6px 0;
+      border-radius: 999px;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      color: #1d4ed8;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .telemetry-muted {
+      color: #94a3b8;
+      font-size: 12px;
+    }
     .whois-result-body {
       padding: 0 16px 16px;
     }
@@ -5924,6 +6271,9 @@ function generateHTML(domains, isAdmin) {
       .whois-result-grid {
         grid-template-columns: 1fr;
       }
+      .telemetry-summary {
+        grid-template-columns: 1fr;
+      }
       .editor-grid,
       .editor-grid-simple,
       .add-domain-form {
@@ -5977,6 +6327,7 @@ function generateHTML(domains, isAdmin) {
       <div class="admin-link">${adminLink}</div>
       ${renderSupportBanner()}
       ${adminTools}
+      ${isAdmin ? renderTelemetryCenterPanel(telemetryStats) : ''}
 
       <section class="panel">
         <div class="panel-head">

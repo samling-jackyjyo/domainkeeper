@@ -28,6 +28,7 @@ DomainKeeper 是一个基于 Cloudflare Workers + KV 的域名面板，用来集
 - WHOIS 结果缓存到 Cloudflare KV
 - 网站和 README 内置玉米图标
 - 页面内直接提供 GitHub、Star 和可选的“奶茶支持”入口
+- 支持自愿开启的统计中心，只统计部署数、访问 IP、最近在线时间
 
 ## 部署要求
 
@@ -65,6 +66,12 @@ Missing DOMAIN_INFO binding
 | `ADMIN_PASSWORD` | 是 | 后台登录密码，同时用于后台接口鉴权 |
 | `ACCESS_PASSWORD` | 否 | 前台访问密码；留空则首页可直接访问 |
 | `DONATE_URL` | 否 | 网页“请我喝杯奶茶”按钮的跳转地址 |
+| `TELEMETRY_CENTER_ENABLED` | 否 | 当前实例作为统计中心时设为 `true` |
+| `TELEMETRY_OPT_IN` | 否 | 当前实例自愿上报时设为 `true` |
+| `TELEMETRY_SERVER_URL` | 否 | 指向你的统计中心 Worker 地址 |
+| `TELEMETRY_TOKEN` | 否 | 统计中心和客户端共用的上报 Token |
+| `TELEMETRY_DEPLOYMENT_ID` | 否 | 自定义部署标识；不填则默认使用当前 host |
+| `TELEMETRY_DEPLOYMENT_LABEL` | 否 | 统计中心里展示的部署名称 |
 | `TENCENTCLOUD_SECRET_ID` | 否 | 腾讯云 API SecretId，用于 DNSPod `DescribeDomainWhois` |
 | `TENCENTCLOUD_SECRET_KEY` | 否 | 腾讯云 API SecretKey，用于 DNSPod `DescribeDomainWhois` |
 | `APIHZ_USER_ID` | 否 | APIHZ 开发者 ID |
@@ -160,6 +167,7 @@ npx wrangler deploy
 - 支持“全局更新 WHOIS”
 - 支持单条“查询 WHOIS”
 - WHOIS 查询结果在页面内展示，不用浏览器弹窗
+- 开启统计中心后，会在后台显示部署数、访问 IP 和最近在线时间
 
 ## GitHub / Star / 奶茶支持
 
@@ -179,7 +187,29 @@ DONATE_URL=https://your-donate-page.example.com
 
 - 当前公开版本默认不做隐藏统计
 - 不会默认把使用者的域名、IP 或部署信息回传到作者名下服务器
-- 如果后续要做集中统计，建议做成显式自愿开启的遥测开关，并在 README 和页面里明确说明采集范围
+- 统计中心是显式自愿开启的
+- 只统计部署数、访问 IP、最近在线时间
+
+### 统计中心用法
+
+把你自己的 Worker 作为统计中心：
+
+```txt
+TELEMETRY_CENTER_ENABLED=true
+TELEMETRY_TOKEN=your-shared-token
+```
+
+把愿意上报的客户实例配置成：
+
+```txt
+TELEMETRY_OPT_IN=true
+TELEMETRY_SERVER_URL=https://your-center.example.workers.dev
+TELEMETRY_TOKEN=your-shared-token
+TELEMETRY_DEPLOYMENT_ID=my-site-01
+TELEMETRY_DEPLOYMENT_LABEL=My Site 01
+```
+
+开启后，客户端访问 `/`、`/login`、`/admin`、`/admin-login` 时会把最近访问 IP 和在线时间上报到你的中心 Worker。你的后台页面会多出“统计中心”面板。
 
 ## 自定义标题
 
@@ -195,6 +225,7 @@ const CUSTOM_TITLE = "培根的玉米大全";
 - 所有密钥都放 Worker Secret
 - 不要把真实密钥提交到 Git
 - 如果密钥曾经明文出现在聊天、截图或日志里，请及时轮换
+- `TELEMETRY_TOKEN` 不要和后台密码共用
 
 ## 交流群
 
