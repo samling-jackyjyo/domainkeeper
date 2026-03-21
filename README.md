@@ -28,7 +28,7 @@ DomainKeeper 是一个基于 Cloudflare Workers + KV 的域名面板，用来集
 - WHOIS 结果缓存到 Cloudflare KV
 - 网站和 README 内置玉米图标
 - 页面内直接提供 GitHub、Star 和可选的“奶茶支持”入口
-- 支持自愿开启的统计中心，只统计部署数、访问 IP、最近在线时间
+- 支持默认开启、可手动关闭的统计中心，只统计部署数、访问 IP、最近在线时间
 
 ## 部署要求
 
@@ -67,7 +67,7 @@ Missing DOMAIN_INFO binding
 | `ACCESS_PASSWORD` | 否 | 前台访问密码；留空则首页可直接访问 |
 | `DONATE_URL` | 否 | 网页“请我喝杯奶茶”按钮的跳转地址 |
 | `TELEMETRY_CENTER_ENABLED` | 否 | 当前实例作为统计中心时设为 `true` |
-| `TELEMETRY_OPT_IN` | 否 | 当前实例自愿上报时设为 `true` |
+| `TELEMETRY_OPT_IN` | 否 | 默认开启；设为 `false` 时关闭上报 |
 | `TELEMETRY_SERVER_URL` | 否 | 指向你的统计中心 Worker 地址 |
 | `TELEMETRY_TOKEN` | 否 | 统计中心和客户端共用的上报 Token |
 | `TELEMETRY_DEPLOYMENT_ID` | 否 | 自定义部署标识；不填则默认使用当前 host |
@@ -185,9 +185,8 @@ DONATE_URL=https://your-donate-page.example.com
 
 ## 统计与隐私
 
-- 当前公开版本默认不做隐藏统计
-- 不会默认把使用者的域名、IP 或部署信息回传到作者名下服务器
-- 统计中心是显式自愿开启的
+- 统计中心支持默认开启，也支持手动关闭
+- 如果某个实例不想上报，显式设置 `TELEMETRY_OPT_IN=false` 即可
 - 只统计部署数、访问 IP、最近在线时间
 
 ### 统计中心用法
@@ -199,17 +198,22 @@ TELEMETRY_CENTER_ENABLED=true
 TELEMETRY_TOKEN=your-shared-token
 ```
 
-把愿意上报的客户实例配置成：
+客户实例默认会上报；如果你要显式配置，可写成：
 
 ```txt
-TELEMETRY_OPT_IN=true
 TELEMETRY_SERVER_URL=https://your-center.example.workers.dev
 TELEMETRY_TOKEN=your-shared-token
 TELEMETRY_DEPLOYMENT_ID=my-site-01
 TELEMETRY_DEPLOYMENT_LABEL=My Site 01
 ```
 
-开启后，客户端访问 `/`、`/login`、`/admin`、`/admin-login` 时会把最近访问 IP 和在线时间上报到你的中心 Worker。你的后台页面会多出“统计中心”面板。
+如果某个实例不想上报，增加：
+
+```txt
+TELEMETRY_OPT_IN=false
+```
+
+默认情况下，客户端访问 `/`、`/login`、`/admin`、`/admin-login` 时会把最近访问 IP 和在线时间上报到你的中心 Worker。你的后台页面会多出“统计中心”面板。
 
 ## 自定义标题
 
