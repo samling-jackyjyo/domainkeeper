@@ -162,7 +162,7 @@ npx wrangler deploy
 - 支持“全局更新 WHOIS”
 - 支持单条“查询 WHOIS”
 - WHOIS 查询结果在页面内统一展示，不走浏览器弹窗
-- 开启统计中心后，会在后台显示部署数、访问 IP 和最近在线时间
+- 开启统计中心后，可通过 `/admin/telemetry` 单独查看部署数、访问 IP 和最近在线时间
 
 ## 统计与隐私
 
@@ -194,7 +194,12 @@ TELEMETRY_DEPLOYMENT_LABEL=My Site 01
 TELEMETRY_OPT_IN=false
 ```
 
-默认情况下，客户端访问 `/`、`/login`、`/admin`、`/admin-login` 时，会把最近访问 IP 和在线时间上报到你的中心 Worker。你的后台页面会多出“统计中心”面板。
+默认情况下，客户端访问 `/`、`/login`、`/admin`、`/admin-login` 时，会把最近访问 IP 和在线时间上报到你的中心 Worker。你可以通过独立页面查看统计中心。
+默认情况下，统计中心页面入口为：
+
+```txt
+/admin/telemetry
+```
 
 ## 支持一下
 

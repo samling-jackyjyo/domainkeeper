@@ -177,7 +177,7 @@ function parseListEnv(value, defaultValues) {
 }
 
 function isTelemetryTrackablePath(pathname) {
-  return pathname === "/" || pathname === "/login" || pathname === "/admin" || pathname === "/admin-login";
+  return pathname === "/" || pathname === "/login" || pathname === "/admin" || pathname === "/admin-login" || pathname === "/admin/telemetry";
 }
 
 function getRequestVisitorIp(request) {
@@ -387,6 +387,8 @@ async function handleRequest(request, ctx) {
     return handleFrontend(request);
   } else if (path === "/admin") {
     return handleAdmin(request);
+  } else if (path === "/admin/telemetry") {
+    return handleTelemetryCenterPage(request);
   } else if (path === "/api/update") {
     return handleApiUpdate(request);
   } else if (path === "/login") {
@@ -474,9 +476,24 @@ async function handleAdmin(request) {
 
   const domains = await fetchCloudflareDomainsInfo();
   const domainsWithInfo = await fetchDomainInfo(domains, { allowWhoisRefresh: false });
-  const telemetryStats = await fetchTelemetryStats();
-  return new Response(generateHTML(domainsWithInfo, true, telemetryStats), {
+  return new Response(generateHTML(domainsWithInfo, true), {
     headers: { 'Content-Type': 'text/html' },
+  });
+}
+
+async function handleTelemetryCenterPage(request) {
+  const cookie = request.headers.get("Cookie");
+  if (!cookie || !cookie.includes(`admin_token=${ADMIN_PASSWORD}`)) {
+    return Response.redirect(`${new URL(request.url).origin}/admin-login`, 302);
+  }
+
+  if (!TELEMETRY_CENTER_ENABLED) {
+    return new Response("Telemetry center is disabled", { status: 404 });
+  }
+
+  const telemetryStats = await fetchTelemetryStats();
+  return new Response(generateTelemetryCenterHTML(telemetryStats), {
+    headers: { "Content-Type": "text/html; charset=UTF-8" }
   });
 }
 
@@ -2502,6 +2519,338 @@ function renderTelemetryCenterPanelV2(telemetryStats) {
         </table>
       </div>
     </section>
+  `;
+}
+
+function generateTelemetryCenterHTML(telemetryStats) {
+  return `
+  <!DOCTYPE html>
+  <html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${CUSTOM_TITLE} - 统计中心</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=${VERSION}">
+    <link rel="shortcut icon" href="/favicon.ico?v=${VERSION}">
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 28px 18px 96px;
+        font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+        background:
+          radial-gradient(circle at top, rgba(59,130,246,0.12), transparent 45%),
+          linear-gradient(180deg, #f6f9ff 0%, #eef4ff 42%, #f7fbff 100%);
+        color: #0f172a;
+      }
+      .container {
+        width: min(1480px, calc(100vw - 36px));
+        margin: 0 auto;
+      }
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 18px;
+        margin-bottom: 12px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 50px;
+        line-height: 1.08;
+        font-weight: 800;
+      }
+      .subtext {
+        margin-top: 8px;
+        color: #64748b;
+        font-size: 16px;
+      }
+      .admin-link {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin: 18px 0 18px;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 46px;
+        padding: 0 18px;
+        border-radius: 999px;
+        background: rgba(255,255,255,0.84);
+        color: #0f172a;
+        font-weight: 700;
+        text-decoration: none;
+        box-shadow: 0 10px 30px rgba(15,23,42,0.08);
+        border: 1px solid rgba(148,163,184,0.24);
+      }
+      .pill.link-pill {
+        color: #2563eb;
+      }
+      .support-banner,
+      .panel {
+        background: rgba(255,255,255,0.9);
+        border: 1px solid rgba(148,163,184,0.18);
+        border-radius: 24px;
+        box-shadow: 0 18px 45px rgba(15,23,42,0.08);
+      }
+      .support-banner {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 18px;
+        padding: 18px 22px;
+        margin-bottom: 18px;
+      }
+      .support-copy {
+        display: grid;
+        gap: 6px;
+      }
+      .support-copy strong {
+        font-size: 18px;
+      }
+      .support-copy span {
+        color: #64748b;
+      }
+      .support-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+      .support-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 44px;
+        padding: 0 18px;
+        border-radius: 999px;
+        border: 1px solid rgba(37,99,235,0.2);
+        background: #ffffff;
+        color: #2563eb;
+        font-weight: 700;
+        text-decoration: none;
+        cursor: pointer;
+      }
+      .support-cta-btn {
+        background: linear-gradient(135deg, #2563eb, #1d4ed8);
+        color: #fff;
+      }
+      .panel {
+        padding: 22px;
+      }
+      .panel-head h2 {
+        margin: 0;
+        font-size: 38px;
+        line-height: 1.1;
+      }
+      .panel-head p {
+        margin: 10px 0 0;
+        color: #64748b;
+      }
+      .telemetry-summary {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+        margin-top: 18px;
+      }
+      .telemetry-stat-card {
+        background: #ffffff;
+        border: 1px solid #dbe5f3;
+        border-radius: 18px;
+        padding: 16px 18px;
+      }
+      .telemetry-stat-label {
+        display: block;
+        color: #64748b;
+        font-size: 14px;
+        margin-bottom: 8px;
+      }
+      .telemetry-stat-value {
+        font-size: 36px;
+        line-height: 1;
+      }
+      .table-wrapper {
+        overflow-x: auto;
+        margin-top: 18px;
+      }
+      .domain-table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      .domain-table th,
+      .domain-table td {
+        padding: 14px 12px;
+        border-bottom: 1px solid #e2e8f0;
+        text-align: left;
+        vertical-align: top;
+      }
+      .domain-table th {
+        white-space: nowrap;
+        color: #334155;
+      }
+      .telemetry-ip-chip {
+        display: inline-flex;
+        padding: 4px 10px;
+        margin: 2px 6px 2px 0;
+        border-radius: 999px;
+        background: rgba(37,99,235,0.08);
+        color: #2563eb;
+        font-weight: 600;
+      }
+      .telemetry-muted {
+        color: #94a3b8;
+      }
+      .empty-cell {
+        text-align: center;
+        color: #64748b;
+      }
+      .support-modal {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        background: rgba(15, 23, 42, 0.55);
+        z-index: 1000;
+      }
+      .support-modal.is-visible {
+        display: flex;
+      }
+      .support-modal-card {
+        width: min(760px, 100%);
+        background: #fff;
+        border-radius: 24px;
+        padding: 24px;
+        position: relative;
+        box-shadow: 0 24px 60px rgba(15,23,42,0.24);
+      }
+      .support-modal-close {
+        position: absolute;
+        top: 14px;
+        right: 16px;
+        border: 0;
+        background: transparent;
+        font-size: 30px;
+        line-height: 1;
+        cursor: pointer;
+        color: #64748b;
+      }
+      .support-modal-header h2 {
+        margin: 0;
+        font-size: 30px;
+      }
+      .support-modal-header p {
+        margin: 10px 0 0;
+        color: #64748b;
+      }
+      .support-qr-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+        margin-top: 22px;
+      }
+      .support-qr-card {
+        border: 1px solid #dbe5f3;
+        border-radius: 20px;
+        padding: 18px;
+        background: #f8fbff;
+        text-align: center;
+      }
+      .support-qr-card h3 {
+        margin: 0 0 14px;
+        font-size: 22px;
+      }
+      .support-qr-card img {
+        width: 100%;
+        max-width: 280px;
+        border-radius: 14px;
+        background: #fff;
+      }
+      @media (max-width: 900px) {
+        h1 {
+          font-size: 38px;
+        }
+        .telemetry-summary,
+        .support-qr-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      @media (max-width: 640px) {
+        body {
+          padding: 18px 12px 92px;
+        }
+        .container {
+          width: 100%;
+        }
+        .support-banner {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="topbar">
+        <div>
+          <h1>${CUSTOM_TITLE} - 统计中心</h1>
+          <div class="subtext">这里展示自愿开启上报的部署数、访问 IP 和最近在线时间。</div>
+        </div>
+      </div>
+      <div class="admin-link">
+        <span class="pill current-mode">当前为统计中心</span>
+        <a class="pill link-pill" href="/admin">返回后台</a>
+        <a class="pill link-pill" href="/">返回前台</a>
+      </div>
+      ${renderSupportBannerV2()}
+      ${renderSupportModal()}
+      ${renderTelemetryCenterPanelV2(telemetryStats)}
+    </div>
+    <script>
+      (function () {
+        const supportModal = document.getElementById('supportModal');
+        if (!supportModal) {
+          return;
+        }
+
+        function openSupportModal() {
+          supportModal.classList.add('is-visible');
+          supportModal.setAttribute('aria-hidden', 'false');
+        }
+
+        function closeSupportModal() {
+          supportModal.classList.remove('is-visible');
+          supportModal.setAttribute('aria-hidden', 'true');
+        }
+
+        document.addEventListener('click', function(event) {
+          if (event.target.closest('[data-open-support="true"]')) {
+            openSupportModal();
+            return;
+          }
+
+          if (event.target.closest('[data-close-support="true"]') || event.target === supportModal) {
+            closeSupportModal();
+          }
+        });
+
+        document.addEventListener('keydown', function(event) {
+          if (event.key === 'Escape') {
+            closeSupportModal();
+          }
+        });
+      }());
+    </script>
+    ${footerHTML}
+  </body>
+  </html>
   `;
 }
 
@@ -5550,7 +5899,7 @@ function generateHTML(domains, isAdmin, telemetryStats = null) {
   };
 
   const adminLink = isAdmin
-    ? '<span class="pill current-mode">当前为后台管理</span><a class="pill link-pill" href="/">返回前台</a>'
+    ? `<span class="pill current-mode">当前为后台管理</span><a class="pill link-pill" href="/">返回前台</a>${TELEMETRY_CENTER_ENABLED ? '<a class="pill link-pill" href="/admin/telemetry">统计中心</a>' : ''}`
     : '<span class="pill current-mode">当前为前台</span><a class="pill link-pill" href="/admin">进入后台管理</a>';
 
   const adminTools = isAdmin ? `
@@ -5558,7 +5907,6 @@ function generateHTML(domains, isAdmin, telemetryStats = null) {
       <button id="saveAllDomainsBtn" class="primary-btn">保存全部修改</button>
       <button id="updateAllWhoisBtn" class="primary-btn">全局更新WHOIS</button>
       <button id="syncCloudflareBtn" class="primary-btn">同步 Cloudflare 域名</button>
-      ${telemetryStats ? '<a id="telemetryCenterBtn" class="primary-btn toolbar-link-btn" href="#telemetryCenterPanel">统计中心</a>' : ''}
       <span id="saveStatus" class="toolbar-status"></span>
       <span id="whoisStatus" class="toolbar-status"></span>
       <span id="syncStatus" class="toolbar-status"></span>
@@ -6625,7 +6973,6 @@ function generateHTML(domains, isAdmin, telemetryStats = null) {
       ${renderSupportBannerV2()}
       ${renderSupportModal()}
       ${adminTools}
-      ${isAdmin ? renderTelemetryCenterPanelV2(telemetryStats) : ''}
 
       <section class="panel">
         <div class="panel-head">
@@ -6805,7 +7152,41 @@ function generateHTML(domains, isAdmin, telemetryStats = null) {
     const whoisResultMeta = document.getElementById('whoisResultMeta');
     const whoisTraceList = document.getElementById('whoisTraceList');
     const whoisRawData = document.getElementById('whoisRawData');
+    const supportModal = document.getElementById('supportModal');
     let loadingCounter = 0;
+
+    function openSupportModal() {
+      if (!supportModal) {
+        return;
+      }
+      supportModal.classList.add('is-visible');
+      supportModal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeSupportModal() {
+      if (!supportModal) {
+        return;
+      }
+      supportModal.classList.remove('is-visible');
+      supportModal.setAttribute('aria-hidden', 'true');
+    }
+
+    document.addEventListener('click', function(event) {
+      if (event.target.closest('[data-open-support="true"]')) {
+        openSupportModal();
+        return;
+      }
+
+      if (event.target.closest('[data-close-support="true"]') || event.target === supportModal) {
+        closeSupportModal();
+      }
+    });
+
+    document.addEventListener('keydown', function(event) {
+      if (event.key === 'Escape') {
+        closeSupportModal();
+      }
+    });
 
     function showLoading(message) {
       loadingCounter += 1;
