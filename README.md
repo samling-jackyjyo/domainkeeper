@@ -1,127 +1,100 @@
 # <img src="./corn.svg" alt="玉米图标" width="28" valign="middle" /> DomainKeeper
 
-DomainKeeper 是一个基于 Cloudflare Workers 的域名面板，用来集中展示域名状态、注册商、注册日期、到期日期和剩余天数，并支持后台手动维护。
+DomainKeeper 是一个基于 Cloudflare Workers + KV 的域名面板，用来集中展示：
 
-当前仓库包含两套 Workers 版本：
+- 顶级域名
+- Cloudflare 二级域名
+- 自定义域名
+- 注册商、注册日期、到期时间、剩余天数
+- WHOIS 查询链路和原始 WHOIS
 
-- `index.js`：初级版，手动维护域名列表
-- `domainkeeper.js`：高级版，自动同步 Cloudflare Zone，并自动拉取 WHOIS / RDAP 信息
+当前仓库只维护这一套 Worker 版本：
 
-如果你需要完整前后端分离架构，请查看 [`self-hosted/README.md`](./self-hosted/README.md)。
+- 入口文件：[domainkeeper.js](./domainkeeper.js)
 
-## 当前 Worker 版本特性
+旧的简单版和自托管版已经不再作为 GitHub 主仓库内容维护，只做本地归档。
 
-`domainkeeper.js` 对应的是当前推荐使用的版本，主要特性如下：
+![DomainKeeper 界面预览](https://github.com/user-attachments/assets/bbd9b5ec-f3c6-4593-9a08-2f894b32c9ab)
+
+## 功能概览
 
 - 自动同步 Cloudflare 账户下的顶级域名
-- 支持手动添加二级域名或自定义域名
-- 优先使用 Worker 直连 WHOIS，失败后回退到 RDAP
-- 针对 `.xyz`、`.org`、`.in`、`.uy`、`.ua` 等后缀增加了额外后备源
-- 支持二级域名沿父域名链回溯识别注册商和日期
-- WHOIS 结果默认缓存 1 小时
-- WHOIS 失败时不会覆盖已有有效数据
-- 后台支持全局更新 WHOIS、页内查看查询链路和完整原始 WHOIS
-- 前台支持按列排序、筛选，后台支持批量保存修改
-- 支持前台密码和后台密码分离
-- 数据存储在 Cloudflare KV `DOMAIN_INFO`
-- 网站和 README 均内置玉米图标
+- 支持手动添加和维护自定义域名
+- 前台按表格展示，支持按列排序和筛选
+- 后台支持行内编辑、批量保存
+- 后台支持全局更新 WHOIS
+- 后台支持页内查看 WHOIS 查询过程、最终来源和完整原始 WHOIS
+- 二级域名支持分开维护一级域名和二级域名的注册/到期时间
+- WHOIS 结果缓存到 Cloudflare KV
+- 网站和 README 内置玉米图标
+- 页面内直接提供 GitHub、Star 和可选的“奶茶支持”入口
 
-## 部署方式选择
+## 部署要求
 
-### 方案一：Workers 初级版
+- Cloudflare Workers
+- 一个 KV Namespace，绑定名必须为 `DOMAIN_INFO`
+- Cloudflare API Token
+- Wrangler 或 Cloudflare Dashboard
 
-适合少量域名、完全手动维护。
+当前 Worker 使用了：
 
-- 文件：`index.js`
-- 优点：最简单，无需 KV、无需 Cloudflare API Token
-- 缺点：不能自动同步 Cloudflare 域名，也没有自动 WHOIS 缓存逻辑
+- `cloudflare:sockets` 直连 WHOIS
+- Cloudflare KV 保存域名数据和 WHOIS 缓存
 
-### 方案二：Workers 高级版
+## 快速部署
 
-适合当前大多数使用场景。
+### 1. 准备 KV
 
-- 文件：`domainkeeper.js`
-- 优点：自动同步、自动 WHOIS、支持二级域名、支持后台管理
-- 缺点：需要配置 KV 和 Cloudflare API Token
-<img width="1971" height="1277" alt="image" src="https://github.com/user-attachments/assets/bbd9b5ec-f3c6-4593-9a08-2f894b32c9ab" />
-
-### 方案三：前后端分离自托管
-
-适合需要完整 API、自定义权限和更强扩展性的场景。
-
-- 目录：`self-hosted/`
-
-## Workers 高级版部署
-
-以下步骤对应当前 `domainkeeper.js` 的实际实现。
-
-### 1. 创建 Worker
-
-在 Cloudflare Dashboard 中创建一个新的 Worker，然后将 [`domainkeeper.js`](./domainkeeper.js) 的内容粘贴进去。
-
-注意：
-
-- 这是模块化 Worker，不是旧版 Service Worker 写法
-- 代码使用了 `cloudflare:sockets`，用于直接发起 WHOIS TCP 查询
-
-### 2. 创建 KV 命名空间
-
-创建一个 KV 命名空间，并绑定到 Worker：
+创建一个 KV Namespace，并绑定到 Worker：
 
 - Binding 名称：`DOMAIN_INFO`
 
-这是必填项。没有这个绑定，Worker 会直接报错：
+如果缺少这个绑定，Worker 会直接报错：
 
 ```txt
 Missing DOMAIN_INFO binding
 ```
 
-### 3. 配置环境变量 / Secrets
+### 2. 配置环境变量 / Secrets
 
-不要把真实密钥直接写进源码。当前版本从 Worker 运行时读取以下变量：
+当前版本从 Worker 运行时读取以下变量：
 
 | 变量名 | 必填 | 说明 |
 |---|---|---|
 | `CF_API_KEY` | 是 | Cloudflare API Token，用于读取 Zone 列表 |
 | `ADMIN_PASSWORD` | 是 | 后台登录密码，同时用于后台接口鉴权 |
 | `ACCESS_PASSWORD` | 否 | 前台访问密码；留空则首页可直接访问 |
-| `TENCENTCLOUD_SECRET_ID` | 否 | 腾讯云 API SecretId，用于 DNSPod `DescribeDomainWhois` WHOIS 渠道 |
-| `TENCENTCLOUD_SECRET_KEY` | 否 | 腾讯云 API SecretKey，用于 DNSPod `DescribeDomainWhois` WHOIS 渠道 |
-| `APIHZ_USER_ID` | 否 | 接口盒子开发者 ID，用于额外 WHOIS 查询源 |
-| `APIHZ_KEY` | 否 | 接口盒子开发者 KEY，用于额外 WHOIS 查询源 |
-| `APIHZ_PREFERRED_TLDS` | 否 | 逗号分隔的后缀列表；这些后缀会优先走 APIHZ，默认包含 `ua` |
-| `WHOIS_PROXY_URL` | 否 | HTTP WHOIS 代理地址，适合补 `.uy` 这类直连 WHOIS 不稳定的后缀 |
-| `ENABLE_WHOIS_PROXY_FALLBACK` | 否 | `true` 时，普通后缀在直连 / RDAP 失败后会回退到代理 |
-| `WHOIS_PROXY_PREFERRED_TLDS` | 否 | 逗号分隔的后缀列表；这些后缀会优先走代理，默认包含 `uy` |
+| `DONATE_URL` | 否 | 网页“请我喝杯奶茶”按钮的跳转地址 |
+| `TENCENTCLOUD_SECRET_ID` | 否 | 腾讯云 API SecretId，用于 DNSPod `DescribeDomainWhois` |
+| `TENCENTCLOUD_SECRET_KEY` | 否 | 腾讯云 API SecretKey，用于 DNSPod `DescribeDomainWhois` |
+| `APIHZ_USER_ID` | 否 | APIHZ 开发者 ID |
+| `APIHZ_KEY` | 否 | APIHZ 开发者 Key |
+| `APIHZ_PREFERRED_TLDS` | 否 | 逗号分隔；这些后缀优先走 APIHZ，默认含 `ua` |
+| `WHOIS_PROXY_URL` | 否 | HTTP WHOIS 代理地址 |
+| `ENABLE_WHOIS_PROXY_FALLBACK` | 否 | `true` 时，普通后缀在直连 / RDAP 失败后回退到代理 |
+| `WHOIS_PROXY_PREFERRED_TLDS` | 否 | 逗号分隔；这些后缀优先走代理，默认含 `uy` |
+| `ONEFOUR_LOOKUP_URL` | 否 | 额外 WHOIS HTTP 查询源 |
+| `ONEFOUR_LOOKUP_PREFERRED_TLDS` | 否 | 逗号分隔；这些后缀优先走该查询源 |
 
-建议：
+建议把所有敏感配置都放进 Worker Secret，不要写进源码。
 
-- `CF_API_KEY`、`ADMIN_PASSWORD`、`ACCESS_PASSWORD`、`TENCENTCLOUD_SECRET_ID`、`TENCENTCLOUD_SECRET_KEY`、`APIHZ_USER_ID`、`APIHZ_KEY`、`WHOIS_PROXY_URL` 都使用 Worker Secret 存储
-- 不要再修改源码里的 `*_DEFAULT` 常量来保存真实值
+### 3. 配置 Cloudflare API Token
 
-### 4. 配置 Cloudflare API Token 权限
+`CF_API_KEY` 实际上建议使用 Cloudflare API Token，而不是 Global API Key。
 
-`CF_API_KEY` 实际上应该填 Cloudflare API Token，而不是 Global API Key。
-
-最少需要能读取 Zone 列表。通常给这个 Token 配置只读权限即可。
-
-建议至少包含：
+最少建议包含：
 
 - `Zone:Read`
 
-如果你只打算同步特定账户下的域名，把 Token 范围收窄到对应账号或指定 Zone，别直接给全局高权限。
+如果你只同步指定账号或指定 Zone，建议把权限继续收窄。
 
-### 5. 按需修改标题
+### 4. 部署
 
-如果你要修改页面标题，编辑 [`domainkeeper.js`](./domainkeeper.js) 顶部常量：
+仓库里已经包含 [wrangler.toml](./wrangler.toml)，可直接部署：
 
-```javascript
-const CUSTOM_TITLE = "培根的玉米大全";
+```bash
+npx wrangler deploy
 ```
-
-### 6. 部署
-
-保存并部署 Worker。
 
 部署后默认可访问：
 
@@ -129,186 +102,104 @@ const CUSTOM_TITLE = "培根的玉米大全";
 - `/login`：前台登录
 - `/admin`：后台页面
 - `/admin-login`：后台登录
-- `/whois/example.com`：查询原始 WHOIS 文本
+- `/whois/example.com`：返回结构化 WHOIS 查询结果
 
-## 当前 WHOIS / RDAP 逻辑说明
+## WHOIS 查询策略
 
-当前版本和旧 README 最大的区别在这里。
+当前版本不是单一来源，而是按域名情况走多级回退。
 
-### WHOIS 查询渠道
+优先链路大致包括：
 
-当前版本优先使用 Worker 直连 WHOIS：
-
-- 通过 `cloudflare:sockets` 直连 43 端口
-- 自动识别部分后缀的权威 WHOIS Server
-- 必要时跟随 referral server
-
-如果直连结果不稳定，会继续尝试：
-
+- Worker 直连 WHOIS
 - 权威 RDAP
 - `rdap.org`
-- `.xyz` 专用 RDAP 补源
+- `.xyz` 专用补源
 - HTTP WHOIS 代理
 - APIHZ
 - 腾讯云 DNSPod `DescribeDomainWhois`
 
-现在可以通过 Worker 环境变量控制代理，不需要再改源码。
+注意：
 
-默认配置下：
+- 腾讯云 DNSPod 这条接口并不是所有域名后缀都支持
+- 例如标准主域名通常可返回结果，但像某些特殊层级域名会直接判定无效
+- 所以它在当前项目里是“额外查询渠道”，不是唯一来源
 
-- `.uy` 会优先尝试代理，再回退到直连 WHOIS / RDAP
-- 其他后缀只有在 `ENABLE_WHOIS_PROXY_FALLBACK=true` 时才会回退到代理
+### 二级域名策略
 
-- `WHOIS_PROXY_URL` 不是必填项
-- 不需要额外部署 `whois-proxy`
+对于 `a.b.example.tld` 这类域名，Worker 会优先尝试：
 
-### RDAP 后备源
+1. 查当前域名
+2. 沿父域名链回溯
+3. 根据可用结果补一级域名信息
+4. 二级域名自己的时间优先展示，父域名时间作为兜底
 
-当传统 WHOIS 无法提供稳定结构时，会自动尝试 RDAP。
+## 缓存策略
 
-当前已包含：
+- WHOIS 正常结果默认缓存 1 小时
+- 查询失败缓存 10 分钟后重试
+- 页面渲染时优先使用 KV 中已有结果
+- 后台点“全局更新 WHOIS”时会立即刷新
+- WHOIS 失败不会覆盖已有有效注册商 / 日期
 
-- 权威 RDAP
-- `rdap.org`
-- `.xyz` 额外后备源
-- 阿里云 RDAP 作为 `.xyz` 的额外补源
+## 前后台说明
 
-### 二级域名识别
+### 前台
 
-对于 `a.b.example.tld` 这类域名，当前版本会：
+- 顶级域名、CF 二级域名、自定义域名分开展示
+- 支持按列排序
+- 支持按列筛选
+- 默认按“剩余天数升序”展示
 
-1. 先尝试查自己
-2. 查不到时沿父域名链回溯
-3. 例如回退到 `example.tld`
-4. 将识别到的注册商、注册日期、到期日期用于展示
+### 后台
 
-因此像 `eu.org`、`pp.ua`、`indevs.in` 这类二级域名，现在可以尽量自动补全注册信息。
+- 行内编辑注册商和日期
+- 日期输入统一为 `YYYYMMDD`
+- 空值会高亮提示补录
+- 支持“保存全部修改”
+- 支持“同步 Cloudflare 域名”
+- 支持“全局更新 WHOIS”
+- 支持单条“查询 WHOIS”
+- WHOIS 查询结果在页面内展示，不用浏览器弹窗
 
-## 缓存与刷新策略
+## GitHub / Star / 奶茶支持
 
-当前版本已经不是“每次刷新页面都查一次 WHOIS”。
+网页里现在直接提供：
 
-- 自动查询缓存 1 小时
-- 查询失败缓存 10 分钟后才重试
-- 页面刷新时优先使用 KV 中已有结果
-- 后台手动点击“更新 WHOIS”会立即重新拉取
-- WHOIS 失败时不会覆盖已有有效注册商/日期
+- GitHub 仓库按钮
+- GitHub Star 按钮
+- 可选的“请我喝杯奶茶”按钮
 
-这也是当前版本相对旧版本的关键差异。
+如果要启用奶茶支持按钮，只需要给 Worker 配置：
 
-## 后台管理说明
-
-后台主要支持以下操作：
-
-- 保存全部修改
-- 同步 Cloudflare 域名
-- 手动添加自定义域名
-- 行内编辑注册商 / 注册日期 / 到期日期
-- 全局更新 WHOIS
-- 页内查看查询过程、最终渠道和完整原始 WHOIS
-- 删除域名记录
-
-说明：
-
-- 顶级域名同步来自 Cloudflare Zone 列表
-- 自定义域名和二级域名存储在 `DOMAIN_INFO` KV 中
-- 同步时不会删除标记为 `isCustom` 的域名
-
-## 自定义域名绑定
-
-你可以把 Worker 绑定到自己的域名，例如：
-
-- `https://ym.example.com/`
-
-绑定后和 `workers.dev` 访问的是同一套逻辑。只要路由指向的是同一个 Worker，自定义域名不会改变 WHOIS 行为。
-
-## 初级版部署
-
-如果你只需要手动维护少量域名，可以使用 [`index.js`](./index.js)。
-
-步骤很简单：
-
-1. 创建一个新的 Worker
-2. 复制 [`index.js`](./index.js) 内容
-3. 修改 `DOMAINS` 数组
-4. 保存并部署
-
-示例：
-
-```javascript
-const DOMAINS = [
-  {
-    domain: "example.com",
-    registrationDate: "2024-01-01",
-    expirationDate: "2026-01-01",
-    system: "Cloudflare"
-  }
-];
+```txt
+DONATE_URL=https://your-donate-page.example.com
 ```
 
-## 版本对比
+## 统计与隐私
 
-| 功能 | `index.js` | `domainkeeper.js` | `self-hosted` |
-|---|---|---|---|
-| 部署复杂度 | 低 | 中 | 高 |
-| 自动同步 Cloudflare | 否 | 是 | 是 |
-| 自动 WHOIS / RDAP | 否 | 是 | 是 |
-| 二级域名自动识别 | 否 | 是 | 可扩展 |
-| KV 存储 | 否 | 是 | 否 |
-| 后台管理 | 否 | 是 | 是 |
-| 自定义扩展能力 | 低 | 中 | 高 |
+- 当前公开版本默认不做隐藏统计
+- 不会默认把使用者的域名、IP 或部署信息回传到作者名下服务器
+- 如果后续要做集中统计，建议做成显式自愿开启的遥测开关，并在 README 和页面里明确说明采集范围
+
+## 自定义标题
+
+如果你要修改网站标题，编辑 [domainkeeper.js](./domainkeeper.js) 顶部常量：
+
+```javascript
+const CUSTOM_TITLE = "培根的玉米大全";
+```
 
 ## 安全建议
 
-当前 Worker 版本已经移除了会把登录密码写入日志的调试输出，但仍建议你按下面方式使用：
+- `ADMIN_PASSWORD` 使用强密码
+- 所有密钥都放 Worker Secret
+- 不要把真实密钥提交到 Git
+- 如果密钥曾经明文出现在聊天、截图或日志里，请及时轮换
 
-- 所有密钥都放到 Worker Secrets，不要写死在源码里
-- `ADMIN_PASSWORD` 使用高强度随机密码
-- `ACCESS_PASSWORD` 只在你确实需要前台鉴权时开启
-- `CF_API_KEY` 使用最小权限 Token
+## 交流群
 
-如果你要进一步加强安全性，下一步应改为签名 Session，而不是直接用密码值做 Cookie 校验。
-
-## 相关文档
-
-- 项目总览：[`PROJECT_OVERVIEW.md`](./PROJECT_OVERVIEW.md)
-- 自托管版本：[`self-hosted/README.md`](./self-hosted/README.md)
-
-## 开源协议
-
-本项目采用 [MIT License](https://choosealicense.com/licenses/mit/)
+- TG 群：<https://t.me/+UI8Yf3M7bB8yMmVl>
 
 ## Star History
 
-## `.uy` Proxy 配置示例
-
-如果 `gv.uy`、`xxx.uy` 这类域名直连 WHOIS 不稳定，可以给 Worker 增加下面几个环境变量：
-
-```txt
-WHOIS_PROXY_URL=https://your-whois-proxy.example.com
-WHOIS_PROXY_PREFERRED_TLDS=uy
-ENABLE_WHOIS_PROXY_FALLBACK=true
-```
-
-当前逻辑会：
-
-- 对 `.uy` 优先走 HTTP 代理
-- 代理失败后再回退到直连 WHOIS / RDAP
-- 同时兼容代理返回原始 WHOIS 文本，或直接返回 `registrar` / `registrationDate` / `expirationDate`
-
 [![Star History Chart](https://api.star-history.com/svg?repos=ypq123456789/domainkeeper&type=Date)](https://star-history.com/#ypq123456789/domainkeeper&Date)
-
-## 交流TG群
-
-https://t.me/+ydvXl1_OBBBiZWM1
-
-## 支持作者
-
-<span><small>非常感谢您对 domainkeeper 项目的兴趣！维护开源项目确实需要大量时间和精力投入。若您认为这个项目为您带来了价值，希望您能考虑给予一些支持，哪怕只是一杯咖啡的费用。您的慷慨相助将激励我继续完善这个项目，使其更加实用。它还能让我更专心地参与开源社区的工作。如果您愿意提供赞助，可通过下列渠道：</small></span>
-
-- 给该项目点赞 [![给该项目点赞](https://img.shields.io/github/stars/ypq123456789/domainkeeper?style=social)](https://github.com/ypq123456789/domainkeeper)
-- 关注我的 Github [![关注我的 Github](https://img.shields.io/github/followers/ypq123456789?style=social)](https://github.com/ypq123456789)
-
-| 微信 | 支付宝 |
-|---|---|
-| ![微信](https://github.com/ypq123456789/TrafficCop/assets/114487221/fb265eef-e624-4429-b14a-afdf5b2ca9c4) | ![支付宝](https://github.com/ypq123456789/TrafficCop/assets/114487221/884b58bd-d76f-4e8f-99f4-cac4b9e97168) |

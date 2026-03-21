@@ -1,66 +1,49 @@
 # DomainKeeper 项目总览
 
-## 📁 项目结构
+## 当前仓库结构
 
-```
+这个仓库现在只维护一套 Cloudflare Worker 版本：
+
+```text
 domainkeeper/
-├── index.js                    # Workers 初级版本
-├── domainkeeper.js            # Workers 高级版本  
-├── README.md                  # Workers 版本说明文档
-└── self-hosted/               # 前后端分离版本
-    ├── backend/               # Node.js 后端
-    ├── frontend/              # Vue.js 前端
-    ├── docker-compose.yml     # Docker 编排文件
-    ├── .env.example          # 环境变量模板
-    ├── deploy.sh             # 一键部署脚本
-    └── README.md             # 自托管版本说明文档
+├── domainkeeper.js      # 唯一维护中的 Worker 入口
+├── README.md            # 项目说明与部署文档
+├── wrangler.toml        # Wrangler 配置
+└── corn.svg             # 项目图标
 ```
 
-## 🚀 快速选择部署方案
+旧的简单版和自托管版已经从 GitHub 主仓库移除，只保留本地归档，不再作为公开版本维护。
 
-### 场景一：个人使用，追求简单
-**推荐**: Cloudflare Workers 初级版
+## 当前架构
+
+- 运行平台：Cloudflare Workers
+- 数据存储：Cloudflare KV（绑定名必须为 `DOMAIN_INFO`）
+- 数据来源：Cloudflare Zone 列表 + 多渠道 WHOIS 查询
+- 页面形态：前台展示页 + 后台管理页
+- 维护方式：单文件部署，避免多版本分叉
+
+## 核心能力
+
+- 自动同步 Cloudflare 顶级域名
+- 支持维护 CF 二级域名与自定义域名
+- 前台支持按列排序和筛选
+- 后台支持行内编辑与批量保存
+- 后台支持全局更新 WHOIS
+- 页面内展示 WHOIS 查询链路、命中渠道和原始 WHOIS
+- 支持 GitHub Star 和可选奶茶赞助入口
+
+## 部署入口
+
+请直接参考 [README.md](./README.md)。
+
+标准部署命令：
+
 ```bash
-# 1. 复制 index.js 内容到 Cloudflare Workers
-# 2. 修改域名列表
-# 3. 部署完成
+npx wrangler deploy
 ```
 
-### 场景二：个人使用，需要自动同步
-**推荐**: Cloudflare Workers 高级版  
-```bash
-# 1. 复制 domainkeeper.js 内容到 Cloudflare Workers
-# 2. 配置 API Token 和 KV 存储
-# 3. 部署完成
-```
+## 说明
 
-### 场景三：企业使用，功能完整
-**推荐**: 前后端分离版本
-```bash
-cd self-hosted
-cp .env.example .env
-# 编辑配置文件
-docker-compose up -d
-```
-
-## 📖 详细文档
-
-- **Cloudflare Workers 版本**: 查看 [README.md](./README.md)
-- **前后端分离版本**: 查看 [self-hosted/README.md](./self-hosted/README.md)
-
-## 🔗 相关链接
-
-- **GitHub**: https://github.com/ypq123456789/domainkeeper
-- **演示地址**: http://demo.0o11.com
-- **WHOIS 代理**: https://github.com/ypq123456789/whois-proxy
-- **交流群组**: https://t.me/+ydvXl1_OBBBiZWM1
-
-## 📝 版本历史
-
-- **v1.0**: 初级版本 (index.js)
-- **v1.1**: 高级版本 (domainkeeper.js) 
-- **v2.0**: 前后端分离版本 (self-hosted/)
-
-## 🤝 贡献
-
-欢迎提交 Issues 和 Pull Requests！
+- GitHub 仓库默认不包含旧版本代码
+- 默认不启用隐藏统计或跨站遥测
+- 如果后续需要集中统计，建议做成显式开关，并在 README 和页面里明确告知

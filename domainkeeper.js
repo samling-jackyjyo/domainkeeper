@@ -3,6 +3,8 @@ import { connect } from 'cloudflare:sockets';
 // 在文件顶部添加版本信息后台密码（不可为空）
 const VERSION = "1.7.1";
 const COPYRIGHT_TEXT = "© 2023-2026 bacon159. All rights reserved.";
+const GITHUB_REPO_URL = "https://github.com/ypq123456789/domainkeeper";
+const GITHUB_STARS_URL = `${GITHUB_REPO_URL}/stargazers`;
 const CORN_FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <rect width="64" height="64" rx="14" fill="#f8fafc"/>
   <path d="M18 48c4-13 2-27 14-34 12 7 10 21 14 34-7-4-10-3-14 0-4-3-7-4-14 0Z" fill="#22c55e"/>
@@ -55,6 +57,8 @@ const WHOIS_LOOKUP_MEMO_TTL_MS = 5 * 60 * 1000;
 
 const ACCESS_PASSWORD_DEFAULT = "";
 let ACCESS_PASSWORD = ACCESS_PASSWORD_DEFAULT;
+const DONATE_URL_DEFAULT = "";
+let DONATE_URL = DONATE_URL_DEFAULT;
 
 const ADMIN_PASSWORD_DEFAULT = "";
 let ADMIN_PASSWORD = ADMIN_PASSWORD_DEFAULT;
@@ -97,6 +101,7 @@ export default {
 function applyRuntimeBindings(env) {
   CF_API_KEY = env.CF_API_KEY || CF_API_KEY_DEFAULT;
   ACCESS_PASSWORD = env.ACCESS_PASSWORD || ACCESS_PASSWORD_DEFAULT;
+  DONATE_URL = String(env.DONATE_URL || DONATE_URL_DEFAULT).trim();
   ADMIN_PASSWORD = env.ADMIN_PASSWORD || ADMIN_PASSWORD_DEFAULT;
   TENCENTCLOUD_SECRET_ID = String(env.TENCENTCLOUD_SECRET_ID || TENCENTCLOUD_SECRET_ID_DEFAULT).trim();
   TENCENTCLOUD_SECRET_KEY = String(env.TENCENTCLOUD_SECRET_KEY || TENCENTCLOUD_SECRET_KEY_DEFAULT).trim();
@@ -2093,6 +2098,26 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+function renderSupportBanner() {
+  const donateButton = DONATE_URL
+    ? `<a class="support-btn donate-btn" href="${escapeHtml(DONATE_URL)}" target="_blank" rel="noopener noreferrer">请我喝杯奶茶</a>`
+    : '';
+
+  return `
+    <div class="support-banner">
+      <div class="support-copy">
+        <strong>如果这个项目对你有帮助，欢迎点个 GitHub Star。</strong>
+        <span>开源维护不易，觉得好用的话，也欢迎支持一杯奶茶。</span>
+      </div>
+      <div class="support-actions">
+        <a class="support-btn github-btn" href="${GITHUB_REPO_URL}" target="_blank" rel="noopener noreferrer">GitHub 仓库</a>
+        <a class="support-btn star-btn" href="${GITHUB_STARS_URL}" target="_blank" rel="noopener noreferrer">给个 Star</a>
+        ${donateButton}
+      </div>
+    </div>
+  `;
+}
+
 function getParentDomainName(domainInfo) {
   const domain = String(domainInfo?.domain || '').trim();
   const lookupDomain = String(domainInfo?.whoisLookupDomain || '').trim();
@@ -2217,6 +2242,58 @@ function generateLoginHTML(title, action, errorMessage = "") {
       border-radius: 999px;
       box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
     }
+    .support-banner {
+      margin: 0 auto 20px;
+      max-width: 780px;
+      padding: 16px 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 14px;
+      background: rgba(255,255,255,0.92);
+      border: 1px solid #dbe3ef;
+      border-radius: 18px;
+      box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+    }
+    .support-copy {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      color: #334155;
+      font-size: 13px;
+    }
+    .support-copy span {
+      color: #64748b;
+    }
+    .support-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .support-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 9px 14px;
+      border-radius: 999px;
+      border: 1px solid #dbe3ef;
+      background: #ffffff;
+      color: #0f172a;
+      text-decoration: none;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .star-btn {
+      background: #fef3c7;
+      border-color: #facc15;
+      color: #854d0e;
+    }
+    .donate-btn {
+      background: #dcfce7;
+      border-color: #86efac;
+      color: #166534;
+    }
     .login-card {
       max-width: 460px;
       margin: 72px auto 0;
@@ -2303,6 +2380,13 @@ function generateLoginHTML(title, action, errorMessage = "") {
         flex-direction: column;
         align-items: flex-start;
       }
+      .support-banner {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .support-actions {
+        justify-content: flex-start;
+      }
     }
     </style>
   </head>
@@ -2312,6 +2396,7 @@ function generateLoginHTML(title, action, errorMessage = "") {
         <div class="brand-pill">${CUSTOM_TITLE}</div>
         <div class="brand-pill">${title}</div>
       </div>
+      ${renderSupportBanner()}
       <div class="login-card">
         <div class="login-card-header">
           <h1>${title}</h1>
@@ -5085,6 +5170,61 @@ function generateHTML(domains, isAdmin) {
     .link-pill {
       color: #2563eb;
     }
+    .support-banner {
+      margin-bottom: 18px;
+      padding: 14px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 14px;
+      background: rgba(255,255,255,0.92);
+      border: 1px solid #dbe3ef;
+      border-radius: 18px;
+      box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+    }
+    .support-copy {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      color: #334155;
+      font-size: 13px;
+    }
+    .support-copy span {
+      color: #64748b;
+    }
+    .support-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .support-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 9px 14px;
+      border-radius: 999px;
+      border: 1px solid #dbe3ef;
+      background: #ffffff;
+      color: #0f172a;
+      text-decoration: none;
+      font-weight: 700;
+      white-space: nowrap;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+    }
+    .github-btn {
+      color: #111827;
+    }
+    .star-btn {
+      background: #fef3c7;
+      border-color: #facc15;
+      color: #854d0e;
+    }
+    .donate-btn {
+      background: #dcfce7;
+      border-color: #86efac;
+      color: #166534;
+    }
     .toolbar {
       display: flex;
       flex-direction: column;
@@ -5798,6 +5938,13 @@ function generateHTML(domains, isAdmin) {
         flex-direction: column;
         align-items: flex-start;
       }
+      .support-banner {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .support-actions {
+        justify-content: flex-start;
+      }
       .admin-link {
         align-items: flex-start;
       }
@@ -5828,6 +5975,7 @@ function generateHTML(domains, isAdmin) {
         </div>
       </div>
       <div class="admin-link">${adminLink}</div>
+      ${renderSupportBanner()}
       ${adminTools}
 
       <section class="panel">
