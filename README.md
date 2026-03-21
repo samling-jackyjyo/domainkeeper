@@ -43,6 +43,7 @@ DomainKeeper 是一个基于 Cloudflare Workers 的域名面板，用来集中�
 - 文件：`domainkeeper.js`
 - 优点：自动同步、自动 WHOIS、支持二级域名、支持后台管理
 - 缺点：需要配置 KV 和 Cloudflare API Token
+<img width="1971" height="1277" alt="image" src="https://github.com/user-attachments/assets/bbd9b5ec-f3c6-4593-9a08-2f894b32c9ab" />
 
 ### 方案三：前后端分离自托管
 
