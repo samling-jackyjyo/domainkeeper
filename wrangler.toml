@@ -1,0 +1,8 @@
+name = "domainkeeper"
+main = "domainkeeper.js"
+compatibility_date = "2026-03-19"
+workers_dev = true
+
+[[kv_namespaces]]
+binding = "DOMAIN_INFO"
+id = "4c229f2af4c14f4bbee7c79fbea68187"

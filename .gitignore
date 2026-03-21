@@ -62,6 +62,7 @@ temp/
 custom_v*.html
 worker_v*.html
 wrangler.deploy.toml
+.wrangler/
 
 # Coverage reports
 coverage/

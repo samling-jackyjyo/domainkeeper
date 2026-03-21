@@ -1,4 +1,4 @@
-# DomainKeeper
+# <img src="./corn.svg" alt="玉米图标" width="28" valign="middle" /> DomainKeeper
 
 DomainKeeper 是一个基于 Cloudflare Workers 的域名面板，用来集中展示域名状态、注册商、注册日期、到期日期和剩余天数，并支持后台手动维护。
 
@@ -16,13 +16,15 @@ DomainKeeper 是一个基于 Cloudflare Workers 的域名面板，用来集中�
 - 自动同步 Cloudflare 账户下的顶级域名
 - 支持手动添加二级域名或自定义域名
 - 优先使用 Worker 直连 WHOIS，失败后回退到 RDAP
-- 针对 `.xyz`、`.org`、`.in` 等后缀增加了额外后备源
+- 针对 `.xyz`、`.org`、`.in`、`.uy`、`.ua` 等后缀增加了额外后备源
 - 支持二级域名沿父域名链回溯识别注册商和日期
 - WHOIS 结果默认缓存 1 小时
 - WHOIS 失败时不会覆盖已有有效数据
-- 后台支持手动“更新 WHOIS”“查询 WHOIS”“查看属性”
+- 后台支持全局更新 WHOIS、页内查看查询链路和完整原始 WHOIS
+- 前台支持按列排序、筛选，后台支持批量保存修改
 - 支持前台密码和后台密码分离
 - 数据存储在 Cloudflare KV `DOMAIN_INFO`
+- 网站和 README 均内置玉米图标
 
 ## 部署方式选择
 
@@ -82,11 +84,18 @@ Missing DOMAIN_INFO binding
 | `CF_API_KEY` | 是 | Cloudflare API Token，用于读取 Zone 列表 |
 | `ADMIN_PASSWORD` | 是 | 后台登录密码，同时用于后台接口鉴权 |
 | `ACCESS_PASSWORD` | 否 | 前台访问密码；留空则首页可直接访问 |
-| `WHOISXML_API_KEY` | 否 | 可选后备源；只有在前置 WHOIS / RDAP 都失败时才会使用 |
+| `TENCENTCLOUD_SECRET_ID` | 否 | 腾讯云 API SecretId，用于 DNSPod `DescribeDomainWhois` WHOIS 渠道 |
+| `TENCENTCLOUD_SECRET_KEY` | 否 | 腾讯云 API SecretKey，用于 DNSPod `DescribeDomainWhois` WHOIS 渠道 |
+| `APIHZ_USER_ID` | 否 | 接口盒子开发者 ID，用于额外 WHOIS 查询源 |
+| `APIHZ_KEY` | 否 | 接口盒子开发者 KEY，用于额外 WHOIS 查询源 |
+| `APIHZ_PREFERRED_TLDS` | 否 | 逗号分隔的后缀列表；这些后缀会优先走 APIHZ，默认包含 `ua` |
+| `WHOIS_PROXY_URL` | 否 | HTTP WHOIS 代理地址，适合补 `.uy` 这类直连 WHOIS 不稳定的后缀 |
+| `ENABLE_WHOIS_PROXY_FALLBACK` | 否 | `true` 时，普通后缀在直连 / RDAP 失败后会回退到代理 |
+| `WHOIS_PROXY_PREFERRED_TLDS` | 否 | 逗号分隔的后缀列表；这些后缀会优先走代理，默认包含 `uy` |
 
 建议：
 
-- `CF_API_KEY`、`ADMIN_PASSWORD`、`ACCESS_PASSWORD`、`WHOISXML_API_KEY` 都使用 Worker Secret 存储
+- `CF_API_KEY`、`ADMIN_PASSWORD`、`ACCESS_PASSWORD`、`TENCENTCLOUD_SECRET_ID`、`TENCENTCLOUD_SECRET_KEY`、`APIHZ_USER_ID`、`APIHZ_KEY`、`WHOIS_PROXY_URL` 都使用 Worker Secret 存储
 - 不要再修改源码里的 `*_DEFAULT` 常量来保存真实值
 
 ### 4. 配置 Cloudflare API Token 权限
@@ -125,7 +134,7 @@ const CUSTOM_TITLE = "培根的玉米大全";
 
 当前版本和旧 README 最大的区别在这里。
 
-### 不再依赖自建 WHOIS 代理
+### WHOIS 查询渠道
 
 当前版本优先使用 Worker 直连 WHOIS：
 
@@ -133,9 +142,21 @@ const CUSTOM_TITLE = "培根的玉米大全";
 - 自动识别部分后缀的权威 WHOIS Server
 - 必要时跟随 referral server
 
-只有在源码里手动打开 `ENABLE_WHOIS_PROXY_FALLBACK` 时，才会回退到 `WHOIS_PROXY_URL`。
+如果直连结果不稳定，会继续尝试：
+
+- 权威 RDAP
+- `rdap.org`
+- `.xyz` 专用 RDAP 补源
+- HTTP WHOIS 代理
+- APIHZ
+- 腾讯云 DNSPod `DescribeDomainWhois`
+
+现在可以通过 Worker 环境变量控制代理，不需要再改源码。
 
 默认配置下：
+
+- `.uy` 会优先尝试代理，再回退到直连 WHOIS / RDAP
+- 其他后缀只有在 `ENABLE_WHOIS_PROXY_FALLBACK=true` 时才会回退到代理
 
 - `WHOIS_PROXY_URL` 不是必填项
 - 不需要额外部署 `whois-proxy`
@@ -178,14 +199,13 @@ const CUSTOM_TITLE = "培根的玉米大全";
 
 后台主要支持以下操作：
 
+- 保存全部修改
 - 同步 Cloudflare 域名
 - 手动添加自定义域名
-- 编辑注册商 / 注册日期 / 到期日期
-- 手动更新 WHOIS
-- 查看原始 WHOIS
-- 查看域名属性
+- 行内编辑注册商 / 注册日期 / 到期日期
+- 全局更新 WHOIS
+- 页内查看查询过程、最终渠道和完整原始 WHOIS
 - 删除域名记录
-- 将自定义域名重置为 Cloudflare 同步域名
 
 说明：
 
@@ -258,6 +278,22 @@ const DOMAINS = [
 本项目采用 [MIT License](https://choosealicense.com/licenses/mit/)
 
 ## Star History
+
+## `.uy` Proxy 配置示例
+
+如果 `gv.uy`、`xxx.uy` 这类域名直连 WHOIS 不稳定，可以给 Worker 增加下面几个环境变量：
+
+```txt
+WHOIS_PROXY_URL=https://your-whois-proxy.example.com
+WHOIS_PROXY_PREFERRED_TLDS=uy
+ENABLE_WHOIS_PROXY_FALLBACK=true
+```
+
+当前逻辑会：
+
+- 对 `.uy` 优先走 HTTP 代理
+- 代理失败后再回退到直连 WHOIS / RDAP
+- 同时兼容代理返回原始 WHOIS 文本，或直接返回 `registrar` / `registrationDate` / `expirationDate`
 
 [![Star History Chart](https://api.star-history.com/svg?repos=ypq123456789/domainkeeper&type=Date)](https://star-history.com/#ypq123456789/domainkeeper&Date)
 
