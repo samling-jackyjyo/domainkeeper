@@ -4,7 +4,8 @@ import { connect } from 'cloudflare:sockets';
 const VERSION = "1.7.1";
 const COPYRIGHT_TEXT = "© 2023-2026 bacon159. All rights reserved.";
 const GITHUB_REPO_URL = "https://github.com/ypq123456789/domainkeeper";
-const GITHUB_STARS_URL = `${GITHUB_REPO_URL}/stargazers`;
+const WECHAT_DONATE_QR_URL = "https://github.com/ypq123456789/TrafficCop/assets/114487221/fb265eef-e624-4429-b14a-afdf5b2ca9c4";
+const ALIPAY_DONATE_QR_URL = "https://github.com/ypq123456789/TrafficCop/assets/114487221/884b58bd-d76f-4e8f-99f4-cac4b9e97168";
 const CORN_FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <rect width="64" height="64" rx="14" fill="#f8fafc"/>
   <path d="M18 48c4-13 2-27 14-34 12 7 10 21 14 34-7-4-10-3-14 0-4-3-7-4-14 0Z" fill="#22c55e"/>
@@ -2402,6 +2403,108 @@ function renderTelemetryCenterPanel(telemetryStats) {
   `;
 }
 
+function renderSupportBannerV2() {
+  return `
+    <div class="support-banner">
+      <div class="support-copy">
+        <strong>如果这个项目对你有帮助，欢迎支持一下。</strong>
+        <span>开源维护不易，觉得好用的话，欢迎请我喝杯奶茶。</span>
+      </div>
+      <div class="support-actions">
+        <a class="support-btn github-btn" href="${GITHUB_REPO_URL}" target="_blank" rel="noopener noreferrer">GitHub 仓库</a>
+        <button type="button" class="support-btn support-cta-btn" data-open-support="true">支持一下</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderSupportModal() {
+  return `
+    <div id="supportModal" class="support-modal" aria-hidden="true">
+      <div class="support-modal-card">
+        <button type="button" class="support-modal-close" data-close-support="true" aria-label="关闭">&times;</button>
+        <div class="support-modal-header">
+          <h2>支持一下</h2>
+          <p>如果这个项目对你有帮助，欢迎请我喝杯奶茶。</p>
+        </div>
+        <div class="support-qr-grid">
+          <div class="support-qr-card">
+            <h3>微信</h3>
+            <img src="${WECHAT_DONATE_QR_URL}" alt="微信收款码" loading="lazy">
+          </div>
+          <div class="support-qr-card">
+            <h3>支付宝</h3>
+            <img src="${ALIPAY_DONATE_QR_URL}" alt="支付宝收款码" loading="lazy">
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderTelemetryCenterPanelV2(telemetryStats) {
+  if (!telemetryStats) {
+    return '';
+  }
+
+  const lastSeenText = telemetryStats.lastSeenAt
+    ? formatTelemetryDateTime(telemetryStats.lastSeenAt)
+    : 'Unknown';
+
+  const rows = telemetryStats.records.length
+    ? telemetryStats.records.map((record) => {
+        const recentIps = Array.isArray(record.recentIps) && record.recentIps.length
+          ? record.recentIps.map((item) => `<span class="telemetry-ip-chip">${escapeHtml(item)}</span>`).join('')
+          : '<span class="telemetry-muted">Unknown</span>';
+
+        return `
+          <tr>
+            <td>${escapeHtml(record.deploymentLabel || record.deploymentId || 'Unknown')}</td>
+            <td>${escapeHtml(record.host || record.origin || 'Unknown')}</td>
+            <td>${recentIps}</td>
+            <td>${escapeHtml(formatTelemetryDateTime(record.lastSeenAt))}</td>
+          </tr>
+        `;
+      }).join('')
+    : '<tr><td colspan="4" class="empty-cell">暂无自愿上报的部署信息</td></tr>';
+
+  return `
+    <section id="telemetryCenterPanel" class="panel telemetry-panel">
+      <div class="panel-head">
+        <h2>统计中心</h2>
+        <p>这里只统计自愿开启上报的部署数、访问 IP 和最近在线时间。</p>
+      </div>
+      <div class="telemetry-summary">
+        <div class="telemetry-stat-card">
+          <span class="telemetry-stat-label">部署数</span>
+          <strong class="telemetry-stat-value">${telemetryStats.totalDeployments}</strong>
+        </div>
+        <div class="telemetry-stat-card">
+          <span class="telemetry-stat-label">已知 IP</span>
+          <strong class="telemetry-stat-value">${telemetryStats.totalKnownIps}</strong>
+        </div>
+        <div class="telemetry-stat-card">
+          <span class="telemetry-stat-label">最近在线</span>
+          <strong class="telemetry-stat-value">${escapeHtml(lastSeenText)}</strong>
+        </div>
+      </div>
+      <div class="table-wrapper telemetry-table-wrap">
+        <table class="domain-table telemetry-table">
+          <thead>
+            <tr>
+              <th>部署标识</th>
+              <th>Host</th>
+              <th>访问 IP</th>
+              <th>最近在线</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
 function getParentDomainName(domainInfo) {
   const domain = String(domainInfo?.domain || '').trim();
   const lookupDomain = String(domainInfo?.whoisLookupDomain || '').trim();
@@ -2568,15 +2671,77 @@ function generateLoginHTML(title, action, errorMessage = "") {
       font-weight: 600;
       white-space: nowrap;
     }
-    .star-btn {
+    .support-cta-btn {
       background: #fef3c7;
       border-color: #facc15;
       color: #854d0e;
     }
-    .donate-btn {
-      background: #dcfce7;
-      border-color: #86efac;
-      color: #166534;
+    .support-modal {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      background: rgba(15, 23, 42, 0.42);
+      z-index: 1400;
+    }
+    .support-modal.is-visible {
+      display: flex;
+    }
+    .support-modal-card {
+      position: relative;
+      width: min(760px, 100%);
+      padding: 24px;
+      border-radius: 24px;
+      background: rgba(255,255,255,0.98);
+      border: 1px solid #dbe3ef;
+      box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+    }
+    .support-modal-close {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      width: 38px;
+      height: 38px;
+      border-radius: 999px;
+      font-size: 22px;
+      line-height: 1;
+    }
+    .support-modal-header h2 {
+      margin: 0;
+      font-size: 26px;
+    }
+    .support-modal-header p {
+      margin: 8px 0 0;
+      color: #64748b;
+      font-size: 14px;
+    }
+    .support-qr-grid {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+    .support-qr-card {
+      padding: 18px;
+      border-radius: 18px;
+      border: 1px solid #dbe3ef;
+      background: #f8fafc;
+      text-align: center;
+    }
+    .support-qr-card h3 {
+      margin: 0 0 12px;
+      font-size: 18px;
+    }
+    .support-qr-card img {
+      width: min(100%, 260px);
+      aspect-ratio: 1 / 1;
+      object-fit: contain;
+      border-radius: 16px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      padding: 10px;
     }
     .login-card {
       max-width: 460px;
@@ -2671,6 +2836,9 @@ function generateLoginHTML(title, action, errorMessage = "") {
       .support-actions {
         justify-content: flex-start;
       }
+      .support-qr-grid {
+        grid-template-columns: 1fr;
+      }
     }
     </style>
   </head>
@@ -2680,7 +2848,7 @@ function generateLoginHTML(title, action, errorMessage = "") {
         <div class="brand-pill">${CUSTOM_TITLE}</div>
         <div class="brand-pill">${title}</div>
       </div>
-      ${renderSupportBanner()}
+      ${renderSupportBannerV2()}
       <div class="login-card">
         <div class="login-card-header">
           <h1>${title}</h1>
@@ -2696,6 +2864,34 @@ function generateLoginHTML(title, action, errorMessage = "") {
         </form>
       </div>
     </div>
+    <script>
+      (function () {
+        const supportModal = document.getElementById('supportModal');
+        if (!supportModal) {
+          return;
+        }
+
+        function openSupportModal() {
+          supportModal.classList.add('is-visible');
+          supportModal.setAttribute('aria-hidden', 'false');
+        }
+
+        function closeSupportModal() {
+          supportModal.classList.remove('is-visible');
+          supportModal.setAttribute('aria-hidden', 'true');
+        }
+
+        document.addEventListener('click', function(event) {
+          if (event.target.closest('[data-open-support="true"]')) {
+            openSupportModal();
+            return;
+          }
+          if (event.target.closest('[data-close-support="true"]') || event.target === supportModal) {
+            closeSupportModal();
+          }
+        });
+      }());
+    </script>
     ${footerHTML}
   </body>
   </html>
@@ -3002,6 +3198,8 @@ function generateHTMLLegacy(domains, isAdmin) {
     </div>
     
     <!-- 域名属性模态框 -->
+    ${renderSupportModal()}
+
     <div id="domainPropsModal" class="domain-modal">
       <div class="domain-modal-content">
         <span class="domain-modal-close">&times;</span>
@@ -4011,7 +4209,41 @@ function generateHTMLCards(domains, isAdmin) {
     const whoisResultMeta = document.getElementById('whoisResultMeta');
     const whoisTraceList = document.getElementById('whoisTraceList');
     const whoisRawData = document.getElementById('whoisRawData');
+    const supportModal = document.getElementById('supportModal');
     let loadingCounter = 0;
+
+    function openSupportModal() {
+      if (!supportModal) {
+        return;
+      }
+      supportModal.classList.add('is-visible');
+      supportModal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeSupportModal() {
+      if (!supportModal) {
+        return;
+      }
+      supportModal.classList.remove('is-visible');
+      supportModal.setAttribute('aria-hidden', 'true');
+    }
+
+    document.addEventListener('click', function(event) {
+      if (event.target.closest('[data-open-support="true"]')) {
+        openSupportModal();
+        return;
+      }
+
+      if (event.target.closest('[data-close-support="true"]') || event.target === supportModal) {
+        closeSupportModal();
+      }
+    });
+
+    document.addEventListener('keydown', function(event) {
+      if (event.key === 'Escape') {
+        closeSupportModal();
+      }
+    });
 
     function showLoading(message) {
       loadingCounter += 1;
@@ -5326,7 +5558,7 @@ function generateHTML(domains, isAdmin, telemetryStats = null) {
       <button id="saveAllDomainsBtn" class="primary-btn">保存全部修改</button>
       <button id="updateAllWhoisBtn" class="primary-btn">全局更新WHOIS</button>
       <button id="syncCloudflareBtn" class="primary-btn">同步 Cloudflare 域名</button>
-      ${telemetryStats ? '<a id="telemetryCenterBtn" class="primary-btn toolbar-link-btn" href="#telemetryCenterPanel">缁熻涓績</a>' : ''}
+      ${telemetryStats ? '<a id="telemetryCenterBtn" class="primary-btn toolbar-link-btn" href="#telemetryCenterPanel">统计中心</a>' : ''}
       <span id="saveStatus" class="toolbar-status"></span>
       <span id="whoisStatus" class="toolbar-status"></span>
       <span id="syncStatus" class="toolbar-status"></span>
@@ -5500,15 +5732,77 @@ function generateHTML(domains, isAdmin, telemetryStats = null) {
     .github-btn {
       color: #111827;
     }
-    .star-btn {
+    .support-cta-btn {
       background: #fef3c7;
       border-color: #facc15;
       color: #854d0e;
     }
-    .donate-btn {
-      background: #dcfce7;
-      border-color: #86efac;
-      color: #166534;
+    .support-modal {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      background: rgba(15, 23, 42, 0.42);
+      z-index: 1400;
+    }
+    .support-modal.is-visible {
+      display: flex;
+    }
+    .support-modal-card {
+      position: relative;
+      width: min(760px, 100%);
+      padding: 24px;
+      border-radius: 24px;
+      background: rgba(255,255,255,0.98);
+      border: 1px solid #dbe3ef;
+      box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+    }
+    .support-modal-close {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      width: 38px;
+      height: 38px;
+      border-radius: 999px;
+      font-size: 22px;
+      line-height: 1;
+    }
+    .support-modal-header h2 {
+      margin: 0;
+      font-size: 26px;
+    }
+    .support-modal-header p {
+      margin: 8px 0 0;
+      color: #64748b;
+      font-size: 14px;
+    }
+    .support-qr-grid {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+    .support-qr-card {
+      padding: 18px;
+      border-radius: 18px;
+      border: 1px solid #dbe3ef;
+      background: #f8fafc;
+      text-align: center;
+    }
+    .support-qr-card h3 {
+      margin: 0 0 12px;
+      font-size: 18px;
+    }
+    .support-qr-card img {
+      width: min(100%, 260px);
+      aspect-ratio: 1 / 1;
+      object-fit: contain;
+      border-radius: 16px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      padding: 10px;
     }
     .toolbar {
       display: flex;
@@ -6295,6 +6589,9 @@ function generateHTML(domains, isAdmin, telemetryStats = null) {
       .support-actions {
         justify-content: flex-start;
       }
+      .support-qr-grid {
+        grid-template-columns: 1fr;
+      }
       .admin-link {
         align-items: flex-start;
       }
@@ -6325,9 +6622,10 @@ function generateHTML(domains, isAdmin, telemetryStats = null) {
         </div>
       </div>
       <div class="admin-link">${adminLink}</div>
-      ${renderSupportBanner()}
+      ${renderSupportBannerV2()}
+      ${renderSupportModal()}
       ${adminTools}
-      ${isAdmin ? renderTelemetryCenterPanel(telemetryStats) : ''}
+      ${isAdmin ? renderTelemetryCenterPanelV2(telemetryStats) : ''}
 
       <section class="panel">
         <div class="panel-head">
